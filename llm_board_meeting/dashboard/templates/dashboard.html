@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Board Meeting Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .ekg-canvas {
+            width: 100%;
+            height: 40px;
+            background-color: white;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.3; }
+            50% { opacity: 1; }
+            100% { opacity: 0.3; }
+        }
+        .stress-high {
+            color: #ef4444;
+            animation: pulse 2s infinite;
+        }
+        .stress-medium {
+            color: #f59e0b;
+        }
+        .stress-low {
+            color: #10b981;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto p-4">
+        <!-- Header -->
+        <header class="bg-white shadow-sm rounded-lg p-4 mb-4">
+            <div class="flex justify-between items-center mb-2">
+                <h1 class="text-2xl font-bold text-gray-900">LLM Board Meeting Dashboard</h1>
+                <div class="space-x-2">
+                    <button id="startMeeting" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm">Start New Meeting</button>
+                    <button id="endMeeting" class="hidden bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm">End Meeting</button>
+                </div>
+            </div>
+            <div class="flex items-center space-x-4 text-sm text-gray-600">
+                <div>Current Speaker: <span id="currentSpeaker" class="font-medium">None</span></div>
+                <div>Meeting Stage: <span id="meetingStage" class="font-medium">Not Started</span></div>
+            </div>
+        </header>
+
+        <!-- Member Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <!-- Member cards will be inserted here -->
+        </div>
+
+        <!-- Console Output -->
+        <div class="mt-4 bg-gray-900 rounded-lg p-4">
+            <div class="flex justify-between items-center mb-2">
+                <h2 class="text-gray-200 text-lg font-semibold">Meeting Console</h2>
+                <button id="clearConsole" class="text-gray-400 hover:text-gray-200 text-sm">Clear Console</button>
+            </div>
+            <div id="consoleOutput" class="font-mono text-sm h-48 overflow-y-auto"></div>
+        </div>
+    </div>
+
+    <!-- Member Card Template -->
+    <template id="memberCardTemplate">
+        <div class="bg-white rounded-lg shadow-sm p-4">
+            <div class="flex justify-between items-start mb-2">
+                <h3 class="text-lg font-semibold member-name"></h3>
+                <div class="flex items-center">
+                    <div class="text-sm mr-2">Stress:</div>
+                    <div class="stress-level font-medium"></div>
+                </div>
+            </div>
+            <canvas class="ekg-canvas mb-2"></canvas>
+            <div class="space-y-2">
+                <div class="flex justify-between text-sm">
+                    <span>Health:</span>
+                    <span class="health-value"></span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span>Contributions:</span>
+                    <span class="contributions-value"></span>
+                </div>
+                <div class="text-sm font-medium mb-1">Recent Thoughts:</div>
+                <div class="thoughts-list text-sm text-gray-600 max-h-24 overflow-y-auto"></div>
+            </div>
+        </div>
+    </template>
+
+    <script>
+        // ECG data for animation
+        const ecgData = [-0.012,0.101,0.112,0.146,0.166,0.184,0.186,0.191,0.194,0.201,0.206,0.212,0.215,0.231,0.234,0.252,0.279,0.294,0.326,0.360,0.400,0.446,0.477,0.498,0.518,0.525,0.508,0.470,0.406,0.334,0.291,0.232,0.206,0.176,0.164,0.154,0.153,0.153,0.155,0.143,0.144,0.147,0.148,0.155,0.145,0.147,0.147,0.158,0.152,0.152,0.156,0.159,0.163,0.161,0.156,0.153,0.155,0.155,0.146,0.142,0.144,0.150,0.143,0.146,0.147,0.147,0.141,0.141,0.145,0.148,0.144,0.148,0.146,0.151,0.151,0.142,0.145,0.142,0.153,0.160,0.162,0.162,0.190,0.186,0.214,0.201,0.205,0.179,0.186,0.183,0.178,0.180,0.173,0.157,0.168,0.174,0.186,0.186,0.193,0.203,0.202,0.294,0.365,0.467,0.821,0.937,0.510,0.197,-0.012];
+
+        // Personality profiles for experience years
+        const PERSONALITY_PROFILES = {
+            chair: { expertise_benchmarks: { experience_years: 12 } },
+            sec: { expertise_benchmarks: { experience_years: 8 } },
+            ethics: { expertise_benchmarks: { experience_years: 10 } },
+            synth: { expertise_benchmarks: { experience_years: 10 } },
+            tech: { expertise_benchmarks: { experience_years: 10 } },
+            user: { expertise_benchmarks: { experience_years: 8 } },
+            prag: { expertise_benchmarks: { experience_years: 10 } },
+            innov: { expertise_benchmarks: { experience_years: 7 } },
+            devil: { expertise_benchmarks: { experience_years: 8 } },
+            facil: { expertise_benchmarks: { experience_years: 10 } },
+            future: { expertise_benchmarks: { experience_years: 12 } }
+        };
+
+        class EKGAnimation {
+            constructor(canvas, experienceYears = 10) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.experienceYears = experienceYears;
+                this.speed = this.calculateBaseSpeed();
+                this.dataIndex = 0;
+                this.currentX = 0;
+                this.isRunning = false;
+                
+                // Initialize the trace buffer
+                this.initializeBuffer();
+                
+                // Set canvas size
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+            }
+
+            initializeBuffer() {
+                // Buffer size is fixed to match canvas width
+                const width = this.canvas.width / window.devicePixelRatio;
+                const pointSpacing = 1; // 1 pixel between points (halved from 2)
+                this.bufferSize = Math.floor(width / pointSpacing);
+                this.traceBuffer = new Array(this.bufferSize).fill(null);
+                this.bufferIndex = 0;
+                this.pointSpacing = pointSpacing;
+            }
+
+            calculateBaseSpeed() {
+                // More experience = lower base speed (more stable)
+                // Map experience years (1-20) to speed (3-1)
+                const normalizedExp = Math.min(20, Math.max(1, this.experienceYears));
+                return 3 - ((normalizedExp - 1) / 19) * 2;
+            }
+
+            resize() {
+                const rect = this.canvas.getBoundingClientRect();
+                this.canvas.width = rect.width * window.devicePixelRatio;
+                this.canvas.height = rect.height * window.devicePixelRatio;
+                this.ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+                this.initializeBuffer();
+                this.drawGrid();
+            }
+
+            drawGrid() {
+                const width = this.canvas.width / window.devicePixelRatio;
+                const height = this.canvas.height / window.devicePixelRatio;
+                
+                // Clear canvas and set background
+                this.ctx.fillStyle = 'white';
+                this.ctx.fillRect(0, 0, width, height);
+                
+                this.ctx.strokeStyle = '#e5e7eb';
+                this.ctx.lineWidth = 1;
+                
+                // Draw vertical grid lines
+                for (let x = 0; x < width; x += 20) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(x, 0);
+                    this.ctx.lineTo(x, height);
+                    this.ctx.stroke();
+                }
+                
+                // Draw horizontal grid lines
+                for (let y = 0; y < height; y += 10) {
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(0, y);
+                    this.ctx.lineTo(width, y);
+                    this.ctx.stroke();
+                }
+            }
+
+            start() {
+                if (!this.isRunning) {
+                    this.isRunning = true;
+                    // Set default color to green
+                    this.setColor('#10b981');
+                    this.animate();
+                }
+            }
+
+            stop() {
+                this.isRunning = false;
+            }
+
+            animate() {
+                if (!this.isRunning) return;
+
+                const width = this.canvas.width / window.devicePixelRatio;
+                const height = this.canvas.height / window.devicePixelRatio;
+
+                // Calculate new data point
+                const dataY = ecgData[this.dataIndex];
+                const y = height - (dataY + 1) * height / 3;
+                
+                // Store the new point in the buffer
+                this.traceBuffer[this.bufferIndex] = y;
+                
+                // Clear canvas and redraw grid
+                this.drawGrid();
+                
+                // Draw the entire trace
+                this.ctx.lineWidth = 1.5; // Slightly thinner line to accommodate more points
+                // Set the stroke color before drawing
+                this.ctx.strokeStyle = this.currentColor || '#10b981';
+                this.ctx.beginPath();
+                
+                let firstPoint = true;
+                
+                // Draw all points in the buffer
+                for (let i = 0; i < this.bufferSize; i++) {
+                    const point = this.traceBuffer[i];
+                    const x = i * this.pointSpacing;
+                    
+                    if (point !== null) {
+                        if (firstPoint) {
+                            this.ctx.moveTo(x, point);
+                            firstPoint = false;
+                        } else {
+                            this.ctx.lineTo(x, point);
+                        }
+                    }
+                }
+                
+                this.ctx.stroke();
+                
+                // Update indices
+                this.bufferIndex = (this.bufferIndex + 1) % this.bufferSize;
+                this.dataIndex = (this.dataIndex + 1) % ecgData.length;
+                
+                requestAnimationFrame(() => this.animate());
+            }
+
+            setSpeed(stressLevel) {
+                // For static display, speed affects update rate instead of scroll speed
+                const baseSpeed = this.calculateBaseSpeed();
+                const stressMultiplier = 0.5 + (stressLevel / 100) * 1.5;
+                this.speed = baseSpeed * stressMultiplier;
+            }
+
+            setColor(color) {
+                this.currentColor = color;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const memberGrid = document.querySelector('.grid');
+            const template = document.querySelector('#memberCardTemplate');
+            const startMeetingBtn = document.getElementById('startMeeting');
+            const endMeetingBtn = document.getElementById('endMeeting');
+            const consoleOutput = document.getElementById('consoleOutput');
+            const clearConsoleBtn = document.getElementById('clearConsole');
+            let updateInterval;
+            let lastStage = null;
+            let lastSpeaker = null;
+            const ekgAnimations = new Map();
+
+            function logToConsole(message, type = 'info') {
+                const timestamp = new Date().toLocaleTimeString();
+                const entry = document.createElement('div');
+                entry.className = 'mb-1';
+                
+                let color;
+                switch(type) {
+                    case 'error':
+                        color = 'text-red-400';
+                        break;
+                    case 'success':
+                        color = 'text-green-400';
+                        break;
+                    case 'stage':
+                        color = 'text-blue-400';
+                        break;
+                    case 'speaker':
+                        color = 'text-yellow-400';
+                        break;
+                    default:
+                        color = 'text-gray-400';
+                }
+                
+                entry.innerHTML = `<span class="text-gray-500">[${timestamp}]</span> <span class="${color}">${message}</span>`;
+                consoleOutput.appendChild(entry);
+                consoleOutput.scrollTop = consoleOutput.scrollHeight;
+            }
+
+            function updateMemberCard(memberId, stats) {
+                const card = document.getElementById(`member-${memberId}`);
+                if (!card) return;
+
+                // Update basic stats
+                card.querySelector('.health-value').textContent = `${Math.round(stats.health * 100)}%`;
+                card.querySelector('.contributions-value').textContent = stats.contributions;
+
+                // Update thoughts
+                const thoughtsList = card.querySelector('.thoughts-list');
+                thoughtsList.innerHTML = '';
+                stats.thoughts.forEach(thought => {
+                    if (thought.content) {
+                        const thoughtEl = document.createElement('div');
+                        thoughtEl.className = 'mb-1';
+                        thoughtEl.textContent = thought.content;
+                        thoughtsList.appendChild(thoughtEl);
+                    }
+                });
+
+                // Update stress level and EKG
+                const tokenUsage = stats.token_usage || 0;
+                const maxTokens = stats.max_tokens || 1000;
+                const stressLevel = Math.min(100, Math.round((tokenUsage / maxTokens) * 100));
+                
+                const stressEl = card.querySelector('.stress-level');
+                stressEl.textContent = `${stressLevel}%`;
+                stressEl.className = 'stress-level font-medium ' + 
+                    (stressLevel > 80 ? 'stress-high' : 
+                     stressLevel > 50 ? 'stress-medium' : 
+                     'stress-low');
+
+                // Update EKG animation
+                const ekg = ekgAnimations.get(memberId);
+                if (ekg) {
+                    ekg.setSpeed(stressLevel);
+                    ekg.setColor(
+                        stressLevel > 80 ? '#ef4444' : 
+                        stressLevel > 50 ? '#f59e0b' : 
+                        '#10b981'
+                    );
+                }
+            }
+
+            function createMemberCard(memberId, stats) {
+                const card = template.content.cloneNode(true);
+                const memberCard = card.querySelector('.bg-white');
+                memberCard.id = `member-${memberId}`;
+                
+                // Format member name
+                const formattedName = memberId
+                    .split('_')
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                    .join(' ');
+                
+                memberCard.querySelector('.member-name').textContent = formattedName;
+                
+                // Get experience years from personality profiles
+                const roleType = memberId.split('_')[0];
+                const experienceYears = PERSONALITY_PROFILES[roleType]?.expertise_benchmarks?.experience_years || 10;
+                
+                // Initialize EKG animation with experience years
+                memberGrid.appendChild(card);
+                const canvas = memberCard.querySelector('.ekg-canvas');
+                const ekg = new EKGAnimation(canvas, experienceYears);
+                ekgAnimations.set(memberId, ekg);
+                ekg.start();
+
+                // Update card with initial stats
+                updateMemberCard(memberId, stats);
+            }
+
+            function updateMemberCards(stats) {
+                for (const [memberId, memberStats] of Object.entries(stats)) {
+                    const card = document.getElementById(`member-${memberId}`);
+                    if (!card) {
+                        createMemberCard(memberId, memberStats);
+                    } else {
+                        updateMemberCard(memberId, memberStats);
+                    }
+                }
+            }
+
+            clearConsoleBtn.addEventListener('click', function() {
+                consoleOutput.innerHTML = '';
+                logToConsole('Console cleared');
+            });
+
+            startMeetingBtn.addEventListener('click', async function() {
+                try {
+                    logToConsole('Starting new meeting...', 'info');
+                    const response = await fetch('http://localhost:5001/api/start_meeting', {
+                        method: 'POST'
+                    });
+                    const data = await response.json();
+                    if (data.status === 'success') {
+                        startUpdates();
+                        startMeetingBtn.classList.add('hidden');
+                        endMeetingBtn.classList.remove('hidden');
+                        logToConsole('Meeting started successfully', 'success');
+                    }
+                } catch (error) {
+                    logToConsole(`Error starting meeting: ${error}`, 'error');
+                    console.error('Error starting meeting:', error);
+                }
+            });
+
+            endMeetingBtn.addEventListener('click', function() {
+                if (updateInterval) {
+                    clearInterval(updateInterval);
+                }
+                // Stop all EKG animations
+                ekgAnimations.forEach(ekg => ekg.stop());
+                ekgAnimations.clear();
+                
+                memberGrid.innerHTML = '';
+                document.getElementById('currentSpeaker').textContent = 'None';
+                document.getElementById('meetingStage').textContent = 'Not Started';
+                startMeetingBtn.classList.remove('hidden');
+                endMeetingBtn.classList.add('hidden');
+                logToConsole('Meeting ended by user', 'info');
+                lastStage = null;
+                lastSpeaker = null;
+            });
+
+            function startUpdates() {
+                if (updateInterval) {
+                    clearInterval(updateInterval);
+                }
+                updateInterval = setInterval(updateDashboard, 2000);
+            }
+
+            async function updateDashboard() {
+                try {
+                    const response = await fetch('http://localhost:5001/api/meeting_status');
+                    const data = await response.json();
+
+                    if (data.status !== 'no_meeting') {
+                        updateMemberCards(data.meeting_stats);
+                        
+                        const currentSpeaker = document.getElementById('currentSpeaker');
+                        const meetingStage = document.getElementById('meetingStage');
+                        
+                        // Log stage changes
+                        if (data.meeting_stage !== lastStage) {
+                            logToConsole(`Meeting stage changed to: ${data.meeting_stage}`, 'stage');
+                            lastStage = data.meeting_stage;
+                        }
+
+                        // Log speaker changes
+                        if (data.current_speaker !== lastSpeaker) {
+                            if (data.current_speaker) {
+                                const formattedSpeaker = data.current_speaker
+                                    .split('_')
+                                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                                    .join(' ');
+                                logToConsole(`Current speaker: ${formattedSpeaker}`, 'speaker');
+                            }
+                            lastSpeaker = data.current_speaker;
+                        }
+                        
+                        currentSpeaker.textContent = data.current_speaker || 'None';
+                        meetingStage.textContent = data.meeting_stage || 'Not Started';
+                        
+                        const speakerCard = document.querySelector(`[id^="member-${data.current_speaker}"]`);
+                        document.querySelectorAll('[id^="member-"]').forEach(card => {
+                            card.classList.remove('ring-2', 'ring-blue-500');
+                        });
+                        if (speakerCard) {
+                            speakerCard.classList.add('ring-2', 'ring-blue-500');
+                        }
+                    }
+
+                    if (data.status === 'completed') {
+                        clearInterval(updateInterval);
+                        startMeetingBtn.classList.remove('hidden');
+                        endMeetingBtn.classList.add('hidden');
+                        logToConsole('Meeting completed successfully', 'success');
+                        ekgAnimations.forEach(ekg => ekg.stop());
+                    }
+                    
+                    if (data.status === 'error') {
+                        clearInterval(updateInterval);
+                        console.error('Meeting error:', data.error);
+                        startMeetingBtn.classList.remove('hidden');
+                        endMeetingBtn.classList.add('hidden');
+                        logToConsole(`Meeting error: ${data.error}`, 'error');
+                        ekgAnimations.forEach(ekg => ekg.stop());
+                    }
+                } catch (error) {
+                    logToConsole(`Error updating dashboard: ${error}`, 'error');
+                    console.error('Error updating dashboard:', error);
+                }
+            }
+        });
+    </script>
+</body>
+</html> 

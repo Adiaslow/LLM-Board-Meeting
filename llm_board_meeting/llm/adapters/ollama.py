@@ -17,9 +17,10 @@ class OllamaAdapter(BaseLLMAdapter):
 
     def __init__(
         self,
-        model_name: str = "llama2:7b",
+        model_name: str = "tinyllama",
         base_url: str = "http://localhost:11434",
         timeout: int = 30,
+        **kwargs: Any,
     ) -> None:
         """Initialize Ollama adapter.
 
@@ -27,10 +28,12 @@ class OllamaAdapter(BaseLLMAdapter):
             model_name: Name of the Ollama model to use
             base_url: Base URL for Ollama API
             timeout: Request timeout in seconds
+            **kwargs: Additional configuration options for Ollama
         """
         self.model_name = model_name
         self.base_url = base_url.rstrip("/")
         self.timeout = ClientTimeout(total=timeout)
+        self.options = kwargs
 
     async def generate_response(
         self,
@@ -60,7 +63,8 @@ class OllamaAdapter(BaseLLMAdapter):
                 "temperature": temperature,
                 "options": {
                     **({"num_predict": max_tokens} if max_tokens else {}),
-                    **kwargs,
+                    **self.options,  # Include initialization options
+                    **kwargs,  # Allow overriding per-request
                 },
             }
 

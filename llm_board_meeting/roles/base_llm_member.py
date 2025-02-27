@@ -53,7 +53,7 @@ class BaseLLMMember(BoardMember):
             expertise_areas=expertise_areas,
             personality_profile=personality_profile,
             role_specific_context=role_specific_context,
-            llm_config=llm_config,
+            llm_config=llm_config or {},
         )
 
         self.member_id = member_id
@@ -125,7 +125,6 @@ class BaseLLMMember(BoardMember):
 
         return prompt
 
-    @abstractmethod
     async def _generate_llm_response(
         self, system_prompt: str, context: Dict[str, Any], prompt: str, **kwargs
     ) -> Dict[str, Any]:
@@ -140,7 +139,28 @@ class BaseLLMMember(BoardMember):
         Returns:
             Dict containing the LLM response and metadata.
         """
-        pass
+        llm_provider = self.llm_config.get("provider")
+        if not llm_provider:
+            raise ValueError("LLM provider not configured")
+
+        response = await llm_provider.generate_response(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            temperature=self.llm_config.get("temperature", 0.7),
+            max_tokens=self.llm_config.get("max_tokens", 500),
+            **kwargs,
+        )
+
+        return {
+            "content": response.get("content", ""),
+            "role": self.role,
+            "timestamp": datetime.now().isoformat(),
+            "metadata": {
+                "context_tokens": await llm_provider.get_token_count(str(context)),
+                "prompt_tokens": await llm_provider.get_token_count(prompt),
+                **self.role_specific_context,
+            },
+        }
 
     async def generate_response(
         self, context: Dict[str, Any], prompt: str, **kwargs

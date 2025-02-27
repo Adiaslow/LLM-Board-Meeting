@@ -58,27 +58,24 @@ class StrategicThinker(BaseLLMMember):
             "threats": {},
         }
 
-    async def process_message(
-        self, message: str, context: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    async def process_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """Process an incoming message in the context of strategic thinking.
 
         Args:
             message: The message to process.
-            context: Current context including meeting state.
 
         Returns:
-            Dict containing the response and metadata.
+            Dict containing the processed response.
         """
-        formatted_context = self._format_context(context)
+        formatted_context = self._format_context(message)
         response = await self.generate_response(
-            context=formatted_context, prompt=message
+            context=formatted_context, prompt=message["message"]
         )
 
         # Record any strategic insights from the response
         if "strategic_insight" in response:
             self.add_strategic_insight(
-                topic=context.get("current_topic", "general"),
+                topic=message.get("current_topic", "general"),
                 insight=response["strategic_insight"],
                 implications=response.get("implications", []),
                 time_frame=self.role_specific_context.get("time_horizon", "long-term"),
@@ -245,7 +242,7 @@ class StrategicThinker(BaseLLMMember):
         }
 
     async def _generate_llm_response(
-        self, system_prompt: str, context: Dict[str, Any], prompt: str, **kwargs: Any
+        self, system_prompt: str, context: Dict[str, Any], prompt: str, **kwargs
     ) -> Dict[str, Any]:
         """Generate a response using the LLM.
 
@@ -258,40 +255,21 @@ class StrategicThinker(BaseLLMMember):
         Returns:
             Dict containing the LLM response and metadata.
         """
-        llm_provider = self.llm_config.get("provider")
-        if not llm_provider:
-            raise ValueError("LLM provider not configured")
-
-        response = await llm_provider.generate_response(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            temperature=self.llm_config.get("temperature", 0.7),
-            max_tokens=self.llm_config.get("max_tokens", 500),
-            **kwargs,
+        return await super()._generate_llm_response(
+            system_prompt, context, prompt, **kwargs
         )
 
-        return {
-            "content": response.get("content", ""),
-            "role": "StrategicThinker",
-            "timestamp": datetime.now().isoformat(),
-            "metadata": {
-                "context_tokens": await llm_provider.get_token_count(str(context)),
-                "prompt_tokens": await llm_provider.get_token_count(prompt),
-                "strategic_focus": self.role_specific_context.get("strategic_focus"),
-            },
-        }
-
     async def summarize_content(
-        self, content: Dict[str, Any], context: Optional[Dict[str, Any]] = None
+        self, content: Dict[str, Any], summary_type: str
     ) -> Dict[str, Any]:
         """Summarize content from a strategic perspective.
 
         Args:
             content: The content to summarize.
-            context: Optional additional context.
+            summary_type: Type of summary requested.
 
         Returns:
-            Dict containing the summary and metadata.
+            Dict containing the strategic summary.
         """
         system_prompt = """Summarize the following content from a strategic perspective, 
         focusing on long-term implications and strategic alignment."""
@@ -306,7 +284,7 @@ class StrategicThinker(BaseLLMMember):
         4. Critical success factors"""
 
         response = await self._generate_llm_response(
-            system_prompt=system_prompt, context=context or {}, prompt=summary_prompt
+            system_prompt=system_prompt, context=content, prompt=summary_prompt
         )
 
         return {

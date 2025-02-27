@@ -27,7 +27,7 @@ class Facilitator(BaseLLMMember):
 
     def __init__(
         self,
-        name: str,
+        member_id: str,
         expertise_areas: List[str],
         personality_profile: Dict[str, Any],
         llm_config: Dict[str, Any],
@@ -38,7 +38,7 @@ class Facilitator(BaseLLMMember):
         """Initialize a new Facilitator.
 
         Args:
-            name: The name of the board member.
+            member_id: The unique identifier for the board member.
             expertise_areas: List of expertise areas.
             personality_profile: Dict containing personality configuration.
             llm_config: Configuration for the LLM (temperature, etc.).
@@ -53,17 +53,17 @@ class Facilitator(BaseLLMMember):
             "participation_patterns": participation_patterns,
             "interventions": [],
             "climate_assessments": [],
-            "participation_records": [],
+            "process_adjustments": [],
             "facilitation_metrics": {
                 "total_interventions": 0,
-                "conflicts_addressed": 0,
-                "participation_adjustments": 0,
+                "climate_improvements": 0,
+                "participation_balance": 0.0,
             },
         }
 
         # Initialize base class with role-specific configuration
         super().__init__(
-            name=name,
+            member_id=member_id,
             role="Facilitator",
             expertise_areas=expertise_areas,
             personality_profile=personality_profile,
@@ -71,32 +71,261 @@ class Facilitator(BaseLLMMember):
             llm_config=llm_config,
         )
 
+    def _get_base_system_prompt(self) -> str:
+        """Get the base system prompt for this role.
+
+        Returns:
+            The base system prompt string.
+        """
+        climate = self.role_specific_context["discussion_climate"]
+        dynamics = self.role_specific_context["group_dynamics"]
+
+        return f"""You are a Facilitator board member with expertise in {', '.join(self.expertise_areas)}.
+Current Meeting State:
+- Discussion Climate: {climate}
+- Group Dynamics: {dynamics}
+
+Your role is to:
+1. Ensure psychological safety
+2. Resolve conflicts and tensions
+3. Encourage balanced participation
+4. Maintain productive discourse
+5. Foster inclusive discussions"""
+
+    async def generate_response(
+        self, context: Dict[str, Any], prompt: str, **kwargs
+    ) -> Dict[str, Any]:
+        """Generate a response based on the given context and prompt.
+
+        Args:
+            context: The current context including meeting state and history.
+            prompt: The specific prompt for this interaction.
+            **kwargs: Additional keyword arguments for response generation.
+
+        Returns:
+            Dict containing the response and metadata.
+        """
+        system_prompt = self._get_base_system_prompt()
+        return await self._generate_llm_response(
+            system_prompt, context, prompt, **kwargs
+        )
+
+    async def evaluate_proposal(
+        self, proposal: Dict[str, Any], criteria: Dict[str, Any]
+    ) -> Dict[str, float]:
+        """Evaluate a proposal based on given criteria.
+
+        Args:
+            proposal: The proposal to evaluate.
+            criteria: The criteria to evaluate against.
+
+        Returns:
+            Dict mapping criteria to scores.
+        """
+        scores = {}
+        for criterion, details in criteria.items():
+            # Facilitation-focused evaluation logic would go here
+            scores[criterion] = self._evaluate_facilitation_criterion(
+                proposal, criterion, details
+            )
+        return scores
+
+    async def provide_feedback(
+        self, target_content: Dict[str, Any], feedback_type: str
+    ) -> Dict[str, Any]:
+        """Provide feedback on specific content.
+
+        Args:
+            target_content: The content to provide feedback on.
+            feedback_type: The type of feedback requested.
+
+        Returns:
+            Dict containing structured feedback.
+        """
+        system_prompt = """Provide facilitation feedback on the given content, considering:
+1. Psychological safety impact
+2. Conflict potential
+3. Participation balance
+4. Discussion productivity
+5. Inclusivity factors"""
+
+        feedback_prompt = f"Provide {feedback_type} feedback on: {target_content}"
+        return await self._generate_llm_response(
+            system_prompt, target_content, feedback_prompt
+        )
+
+    async def process_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Process an incoming message.
+
+        Args:
+            message: The message to process.
+
+        Returns:
+            Dict containing the response.
+        """
+        return await self.generate_response(
+            context={"message": message},
+            prompt=message.get("content", ""),
+        )
+
+    async def contribute_to_discussion(
+        self, topic: str, context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Contribute to an ongoing discussion.
+
+        Args:
+            topic: The topic of discussion.
+            context: Context information for the discussion.
+
+        Returns:
+            Dict containing the contribution.
+        """
+        system_prompt = """Contribute to the discussion from a facilitation perspective, considering:
+1. Group dynamics
+2. Psychological safety
+3. Participation balance
+4. Discussion flow
+5. Conflict management"""
+
+        return await self._generate_llm_response(
+            system_prompt, context, f"Provide facilitation insights on: {topic}"
+        )
+
+    async def analyze_discussion(
+        self, discussion_history: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Analyze a discussion history.
+
+        Args:
+            discussion_history: List of discussion entries.
+
+        Returns:
+            Dict containing analysis results.
+        """
+        analysis = {
+            "climate_insights": [],
+            "participation_balance": [],
+            "conflict_indicators": [],
+            "intervention_needs": [],
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        for entry in discussion_history:
+            # Analysis logic would go here
+            self._analyze_discussion_entry(entry, analysis)
+
+        return analysis
+
+    async def summarize_content(
+        self, content: Dict[str, Any], summary_type: str
+    ) -> Dict[str, Any]:
+        """Summarize content.
+
+        Args:
+            content: The content to summarize.
+            summary_type: Type of summary requested.
+
+        Returns:
+            Dict containing the summary.
+        """
+        system_prompt = """Summarize the content from a facilitation perspective, focusing on:
+1. Group dynamics
+2. Psychological safety
+3. Participation patterns
+4. Conflict resolution
+5. Discussion effectiveness"""
+
+        return await self._generate_llm_response(
+            system_prompt, content, f"Provide a {summary_type} summary"
+        )
+
+    async def validate_proposal(
+        self, proposal: Dict[str, Any], criteria: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Validate a proposal against criteria.
+
+        Args:
+            proposal: The proposal to validate.
+            criteria: Validation criteria.
+
+        Returns:
+            Dict containing validation results.
+        """
+        validation_results = {
+            "is_valid": True,
+            "safety_concerns": [],
+            "participation_notes": [],
+            "conflict_potential": [],
+            "recommendations": [],
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        # Validation logic would go here
+        self._validate_facilitation_aspects(proposal, criteria, validation_results)
+
+        return validation_results
+
+    def _evaluate_facilitation_criterion(
+        self, proposal: Dict[str, Any], criterion: str, details: Any
+    ) -> float:
+        """Evaluate a single criterion from a facilitation perspective.
+
+        Args:
+            proposal: The proposal being evaluated.
+            criterion: The criterion to evaluate.
+            details: Details about the criterion.
+
+        Returns:
+            Float score between 0 and 1.
+        """
+        # This would contain actual evaluation logic
+        return 0.8  # Placeholder score
+
+    def _analyze_discussion_entry(
+        self, entry: Dict[str, Any], analysis: Dict[str, Any]
+    ) -> None:
+        """Analyze a single discussion entry and update the analysis.
+
+        Args:
+            entry: The discussion entry to analyze.
+            analysis: The current analysis to update.
+        """
+        # This would contain actual analysis logic
+        pass
+
+    def _validate_facilitation_aspects(
+        self,
+        proposal: Dict[str, Any],
+        criteria: Dict[str, Any],
+        results: Dict[str, Any],
+    ) -> None:
+        """Validate facilitation aspects of a proposal.
+
+        Args:
+            proposal: The proposal to validate.
+            criteria: The validation criteria.
+            results: Results dictionary to update.
+        """
+        # This would contain actual validation logic
+        pass
+
     async def _generate_llm_response(
         self, system_prompt: str, context: Dict[str, Any], prompt: str, **kwargs
     ) -> Dict[str, Any]:
         """Generate a response using the LLM.
 
         Args:
-            system_prompt: The system prompt for the LLM.
-            context: The formatted context.
+            system_prompt: The system prompt to use.
+            context: The context for the response.
             prompt: The user prompt.
             **kwargs: Additional arguments for the LLM.
 
         Returns:
-            Dict containing the LLM response and metadata.
+            Dict containing the response and metadata.
         """
-        # This is a placeholder - actual implementation would integrate with an LLM
-        return {
-            "content": "This is a placeholder response. Implement actual LLM integration.",
-            "timestamp": datetime.now().isoformat(),
-            "confidence": 0.9,
-            "metadata": {
-                "role": "Facilitator",
-                "context_tokens": len(str(context)),
-                "prompt_tokens": len(prompt),
-                "discussion_climate": self.role_specific_context["discussion_climate"],
-            },
-        }
+        return await super()._generate_llm_response(
+            system_prompt, context, prompt, **kwargs
+        )
 
     def record_intervention(
         self,
@@ -104,7 +333,6 @@ class Facilitator(BaseLLMMember):
         situation: str,
         intervention_type: str,
         approach: str,
-        outcome: Optional[str] = None,
     ) -> None:
         """Record a facilitation intervention.
 
@@ -113,80 +341,94 @@ class Facilitator(BaseLLMMember):
             situation: Description of the situation.
             intervention_type: Type of intervention made.
             approach: Approach taken in the intervention.
-            outcome: Optional outcome of the intervention.
         """
         intervention = {
             "topic": topic,
             "situation": situation,
-            "intervention_type": intervention_type,
+            "type": intervention_type,
             "approach": approach,
-            "outcome": outcome,
             "timestamp": datetime.now().isoformat(),
-            "status": "active",
         }
 
         self.role_specific_context["interventions"].append(intervention)
         self.role_specific_context["facilitation_metrics"]["total_interventions"] += 1
 
-    def assess_climate(
-        self,
-        indicators: Dict[str, Any],
-        safety_level: float,
-        tension_points: List[str],
-        recommendations: List[str],
-    ) -> None:
-        """Record a climate assessment.
+    async def assess_climate(self, indicators: Dict[str, Any]) -> Dict[str, Any]:
+        """Assess the current discussion climate.
 
         Args:
-            indicators: Dict of climate indicators.
-            safety_level: Psychological safety score (0-1).
-            tension_points: List of identified tensions.
-            recommendations: List of recommended actions.
+            indicators: Dict containing climate indicators.
+
+        Returns:
+            Dict containing climate assessment.
         """
+        system_prompt = """Assess the discussion climate, considering:
+1. Psychological safety
+2. Participation balance
+3. Tension indicators
+4. Group dynamics
+5. Discussion productivity"""
+
+        response = await self._generate_llm_response(
+            system_prompt=system_prompt,
+            context={"indicators": indicators},
+            prompt="Provide a climate assessment",
+        )
+
         assessment = {
-            "indicators": indicators,
-            "safety_level": safety_level,
-            "tension_points": tension_points,
-            "recommendations": recommendations,
+            "discussion_climate": response.get("climate", "neutral"),
+            "safety_level": self._calculate_safety_level(indicators),
+            "participation_balance": self._assess_participation_balance(),
+            "tension_indicators": self._identify_tension_indicators(indicators),
             "timestamp": datetime.now().isoformat(),
-            "status": "current",
         }
 
         self.role_specific_context["climate_assessments"].append(assessment)
-        if tension_points:
-            self.role_specific_context["facilitation_metrics"][
-                "conflicts_addressed"
-            ] += len(tension_points)
 
-    def track_participation(
-        self,
-        participant: str,
-        contribution_type: str,
-        impact: str,
-        balance_assessment: Dict[str, float],
-    ) -> None:
-        """Record participation patterns.
-
-        Args:
-            participant: The participating member.
-            contribution_type: Type of contribution made.
-            impact: Impact of the contribution.
-            balance_assessment: Dict of participation balance metrics.
-        """
-        participation = {
-            "participant": participant,
-            "contribution_type": contribution_type,
-            "impact": impact,
-            "balance_assessment": balance_assessment,
-            "timestamp": datetime.now().isoformat(),
-            "status": "recorded",
+        return {
+            "discussion_climate": assessment["discussion_climate"],
+            "safety_level": assessment["safety_level"],
+            "participation_balance": assessment["participation_balance"],
+            "tension_indicators": assessment["tension_indicators"],
+            "recommendations": response.get("recommendations", []),
+            "timestamp": assessment["timestamp"],
         }
 
-        self.role_specific_context["participation_records"].append(participation)
-        if balance_assessment.get("requires_adjustment", False):
-            self.role_specific_context["facilitation_metrics"][
-                "participation_adjustments"
-            ] += 1
+    def _calculate_safety_level(self, indicators: Dict[str, Any]) -> float:
+        """Calculate the psychological safety level.
+
+        Args:
+            indicators: Dict containing climate indicators.
+
+        Returns:
+            Float representing safety level (0-1).
+        """
+        # Implement safety level calculation logic here
+        # This is a placeholder implementation
+        return 0.8
+
+    def _assess_participation_balance(self) -> Dict[str, float]:
+        """Assess the balance of participation.
+
+        Returns:
+            Dict mapping participant roles to participation scores.
+        """
+        # Implement participation balance assessment logic here
+        # This is a placeholder implementation
+        return {"overall_balance": 0.75}
+
+    def _identify_tension_indicators(self, indicators: Dict[str, Any]) -> List[str]:
+        """Identify potential sources of tension.
+
+        Args:
+            indicators: Dict containing climate indicators.
+
+        Returns:
+            List of identified tension indicators.
+        """
+        # Implement tension identification logic here
+        # This is a placeholder implementation
+        return []
 
     def suggest_process_adjustment(
         self,

@@ -26,7 +26,7 @@ class FinancialAnalyst(BaseLLMMember):
 
     def __init__(
         self,
-        name: str,
+        member_id: str,
         expertise_areas: List[str],
         personality_profile: Dict[str, Any],
         llm_config: Dict[str, Any],
@@ -37,7 +37,7 @@ class FinancialAnalyst(BaseLLMMember):
         """Initialize a new Financial Analyst.
 
         Args:
-            name: The name of the board member.
+            member_id: The unique identifier for the board member.
             expertise_areas: List of expertise areas.
             personality_profile: Dict containing personality configuration.
             llm_config: Configuration for the LLM (temperature, etc.).
@@ -53,16 +53,17 @@ class FinancialAnalyst(BaseLLMMember):
             "financial_assessments": [],
             "resource_analyses": [],
             "risk_evaluations": [],
+            "efficiency_suggestions": [],
             "financial_metrics": {
                 "total_assessments": 0,
                 "risks_identified": 0,
-                "efficiency_improvements": 0,
+                "suggestions_made": 0,
             },
         }
 
         # Initialize base class with role-specific configuration
         super().__init__(
-            name=name,
+            member_id=member_id,
             role="FinancialAnalyst",
             expertise_areas=expertise_areas,
             personality_profile=personality_profile,
@@ -84,18 +85,158 @@ class FinancialAnalyst(BaseLLMMember):
         Returns:
             Dict containing the LLM response and metadata.
         """
-        # This is a placeholder - actual implementation would integrate with an LLM
-        return {
-            "content": "This is a placeholder response. Implement actual LLM integration.",
+        return await super()._generate_llm_response(
+            system_prompt, context, prompt, **kwargs
+        )
+
+    async def process_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Process an incoming message.
+
+        Args:
+            message: The message to process.
+
+        Returns:
+            Dict containing the response.
+        """
+        return await self.generate_response(
+            context={"message": message},
+            prompt=message.get("content", ""),
+        )
+
+    async def contribute_to_discussion(
+        self, topic: str, context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Contribute to an ongoing discussion.
+
+        Args:
+            topic: The topic of discussion.
+            context: Context information for the discussion.
+
+        Returns:
+            Dict containing the contribution.
+        """
+        system_prompt = """Contribute to the discussion from a financial perspective, considering:
+1. Cost implications
+2. Resource requirements
+3. ROI analysis
+4. Risk assessment
+5. Budget constraints"""
+
+        return await self._generate_llm_response(
+            system_prompt, context, f"Provide financial insights on: {topic}"
+        )
+
+    async def analyze_discussion(
+        self, discussion_history: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Analyze a discussion history.
+
+        Args:
+            discussion_history: List of discussion entries.
+
+        Returns:
+            Dict containing analysis results.
+        """
+        analysis = {
+            "financial_implications": [],
+            "resource_requirements": [],
+            "risk_factors": [],
+            "budget_impact": [],
             "timestamp": datetime.now().isoformat(),
-            "confidence": 0.9,
-            "metadata": {
-                "role": "Financial Analyst",
-                "context_tokens": len(str(context)),
-                "prompt_tokens": len(prompt),
-                "financial_focus": self.role_specific_context["financial_focus"],
-            },
         }
+
+        for entry in discussion_history:
+            self._analyze_discussion_entry(entry, analysis)
+
+        return analysis
+
+    async def summarize_content(
+        self, content: Dict[str, Any], summary_type: str
+    ) -> Dict[str, Any]:
+        """Summarize content.
+
+        Args:
+            content: The content to summarize.
+            summary_type: Type of summary requested.
+
+        Returns:
+            Dict containing the summary.
+        """
+        system_prompt = """Summarize the content from a financial perspective, focusing on:
+1. Cost implications
+2. Resource allocation
+3. Risk factors
+4. Budget considerations
+5. Economic viability"""
+
+        return await self._generate_llm_response(
+            system_prompt, content, f"Provide a {summary_type} summary"
+        )
+
+    async def validate_proposal(
+        self, proposal: Dict[str, Any], criteria: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Validate a proposal against criteria.
+
+        Args:
+            proposal: The proposal to validate.
+            criteria: Validation criteria.
+
+        Returns:
+            Dict containing validation results.
+        """
+        validation_results = {
+            "financial_viability": self._evaluate_financial_criterion(
+                proposal, "financial_viability", criteria.get("financial_viability")
+            ),
+            "resource_efficiency": self._evaluate_financial_criterion(
+                proposal, "resource_efficiency", criteria.get("resource_efficiency")
+            ),
+            "risk_level": self._evaluate_financial_criterion(
+                proposal, "risk_level", criteria.get("risk_level")
+            ),
+            "budget_compliance": self._evaluate_financial_criterion(
+                proposal, "budget_compliance", criteria.get("budget_compliance")
+            ),
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        return validation_results
+
+    def _analyze_discussion_entry(
+        self, entry: Dict[str, Any], analysis: Dict[str, Any]
+    ) -> None:
+        """Analyze a single discussion entry.
+
+        Args:
+            entry: The discussion entry to analyze.
+            analysis: The current analysis results to update.
+        """
+        if "financial_implications" in entry:
+            analysis["financial_implications"].append(entry["financial_implications"])
+        if "resource_requirements" in entry:
+            analysis["resource_requirements"].append(entry["resource_requirements"])
+        if "risk_factors" in entry:
+            analysis["risk_factors"].append(entry["risk_factors"])
+        if "budget_impact" in entry:
+            analysis["budget_impact"].append(entry["budget_impact"])
+
+    def _evaluate_financial_criterion(
+        self, proposal: Dict[str, Any], criterion: str, details: Any
+    ) -> float:
+        """Evaluate a specific financial criterion.
+
+        Args:
+            proposal: The proposal being evaluated.
+            criterion: The criterion to evaluate.
+            details: Details about the criterion.
+
+        Returns:
+            Float score for the criterion.
+        """
+        # Implement criterion-specific evaluation logic here
+        # This is a placeholder implementation
+        return 0.8
 
     def add_financial_assessment(
         self,
@@ -212,7 +353,7 @@ class FinancialAnalyst(BaseLLMMember):
         }
 
         self.role_specific_context["financial_assessments"].append(improvement)
-        self.role_specific_context["financial_metrics"]["efficiency_improvements"] += 1
+        self.role_specific_context["financial_metrics"]["suggestions_made"] += 1
 
     def get_financial_summary(self) -> Dict[str, Any]:
         """Get a summary of financial analysis activities.

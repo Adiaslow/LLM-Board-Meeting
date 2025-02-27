@@ -31,42 +31,108 @@ class ContextManager:
 
         Args:
             config: Optional configuration dictionary with layer settings.
+                   If a single integer is provided, it's treated as max_history
+                   for the active discussion layer.
         """
+        # Handle the case where config is a simple integer (max_history)
+        if isinstance(config, dict) and len(config) == 1 and "max_history" in config:
+            max_history = config["max_history"]
+            config = {
+                "active_discussion": {
+                    "max_entries": max_history,
+                    "max_tokens": max_history
+                    * 100,  # Reasonable token estimate per entry
+                    "retention_policy": "time",
+                    "summarization_policy": "recent_first",
+                }
+            }
+
         # Initialize default configurations if none provided
         self.config = config or {
             "active_discussion": {
                 "max_entries": 50,
                 "max_tokens": 8000,
                 "retention_policy": "time",
+                "summarization_policy": "recent_first",
             },
             "key_points": {
                 "max_entries": 100,
                 "max_tokens": 12000,
                 "retention_policy": "importance",
+                "summarization_policy": "importance_first",
             },
             "meeting_framework": {
                 "max_entries": 20,
                 "max_tokens": 4000,
                 "retention_policy": "manual",
+                "summarization_policy": "structured",
             },
             "persistent_knowledge": {
                 "max_entries": 200,
                 "max_tokens": 16000,
                 "retention_policy": "importance",
+                "summarization_policy": "importance_first",
             },
         }
 
         # Initialize context layers
         self.layers: Dict[str, ContextLayer] = {}
         for layer_name, layer_config in self.config.items():
-            self.layers[layer_name] = ContextLayer(LayerConfig(**layer_config))
+            # Create a proper LayerConfig object with all required fields
+            config_obj = LayerConfig(
+                max_entries=layer_config["max_entries"],
+                max_tokens=layer_config["max_tokens"],
+                retention_policy=layer_config["retention_policy"],
+                summarization_policy=layer_config["summarization_policy"],
+            )
+            self.layers[layer_name] = ContextLayer(config_obj)
 
         # Initialize components
         self.memory_manager = MemoryManager(
-            active_discussion=self.layers["active_discussion"],
-            key_points=self.layers["key_points"],
-            meeting_framework=self.layers["meeting_framework"],
-            persistent_knowledge=self.layers["persistent_knowledge"],
+            active_discussion=self.layers.get(
+                "active_discussion",
+                ContextLayer(
+                    LayerConfig(
+                        max_entries=50,
+                        max_tokens=8000,
+                        retention_policy="time",
+                        summarization_policy="recent_first",
+                    )
+                ),
+            ),
+            key_points=self.layers.get(
+                "key_points",
+                ContextLayer(
+                    LayerConfig(
+                        max_entries=100,
+                        max_tokens=12000,
+                        retention_policy="importance",
+                        summarization_policy="importance_first",
+                    )
+                ),
+            ),
+            meeting_framework=self.layers.get(
+                "meeting_framework",
+                ContextLayer(
+                    LayerConfig(
+                        max_entries=20,
+                        max_tokens=4000,
+                        retention_policy="manual",
+                        summarization_policy="structured",
+                    )
+                ),
+            ),
+            persistent_knowledge=self.layers.get(
+                "persistent_knowledge",
+                ContextLayer(
+                    LayerConfig(
+                        max_entries=200,
+                        max_tokens=16000,
+                        retention_policy="importance",
+                        summarization_policy="importance_first",
+                    )
+                ),
+            ),
         )
         self.retrieval_system = RetrievalSystem()
         self.summarization_engine = SummarizationEngine()
