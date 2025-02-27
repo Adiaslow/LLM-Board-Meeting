@@ -68,7 +68,16 @@ class OllamaAdapter(BaseLLMAdapter):
                     f"{self.base_url}/api/generate", json=payload, timeout=self.timeout
                 ) as response:
                     response.raise_for_status()
-                    result = await response.json()
+
+                    # Handle NDJSON response format
+                    response_text = await response.text()
+                    # Take the last complete JSON object from the stream
+                    json_responses = [
+                        json.loads(line)
+                        for line in response_text.strip().split("\n")
+                        if line.strip()
+                    ]
+                    result = json_responses[-1] if json_responses else {}
 
                     return {
                         "content": result.get("response", ""),
