@@ -1,0 +1,353 @@
+# llm_board_meeting/context_management/manager.py
+
+"""
+Main entry point for the Context Management System.
+
+This module integrates all components of the context management system,
+providing a unified interface for managing context across different layers
+and functionalities.
+"""
+
+from typing import Dict, List, Optional, Any
+from datetime import datetime, timedelta
+
+from llm_board_meeting.context_management.entry import ContextEntry
+from llm_board_meeting.context_management.config import LayerConfig
+from llm_board_meeting.context_management.layers import ContextLayer
+from llm_board_meeting.context_management.memory import MemoryManager
+from llm_board_meeting.context_management.retrieval import RetrievalSystem
+from llm_board_meeting.context_management.summarization import SummarizationEngine
+
+
+class ContextManager:
+    """Main class for managing the Context Management System.
+
+    This class integrates all components (MemoryManager, RetrievalSystem,
+    SummarizationEngine) and provides a unified interface for context management.
+    """
+
+    def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
+        """Initialize the context manager.
+
+        Args:
+            config: Optional configuration dictionary with layer settings.
+        """
+        # Initialize default configurations if none provided
+        self.config = config or {
+            "active_discussion": {
+                "max_entries": 50,
+                "max_tokens": 8000,
+                "retention_policy": "time",
+            },
+            "key_points": {
+                "max_entries": 100,
+                "max_tokens": 12000,
+                "retention_policy": "importance",
+            },
+            "meeting_framework": {
+                "max_entries": 20,
+                "max_tokens": 4000,
+                "retention_policy": "manual",
+            },
+            "persistent_knowledge": {
+                "max_entries": 200,
+                "max_tokens": 16000,
+                "retention_policy": "importance",
+            },
+        }
+
+        # Initialize context layers
+        self.layers: Dict[str, ContextLayer] = {}
+        for layer_name, layer_config in self.config.items():
+            self.layers[layer_name] = ContextLayer(LayerConfig(**layer_config))
+
+        # Initialize components
+        self.memory_manager = MemoryManager(
+            active_discussion=self.layers["active_discussion"],
+            key_points=self.layers["key_points"],
+            meeting_framework=self.layers["meeting_framework"],
+            persistent_knowledge=self.layers["persistent_knowledge"],
+        )
+        self.retrieval_system = RetrievalSystem()
+        self.summarization_engine = SummarizationEngine()
+
+    async def initialize_context(self, format_config: Dict[str, Any]) -> None:
+        """Initialize the context with meeting format configuration.
+
+        Args:
+            format_config: Meeting format configuration dictionary.
+        """
+        # Add format configuration to meeting framework layer
+        self.update_framework(
+            content="Meeting Format Configuration",
+            metadata={
+                "type": "format_config",
+                "config": format_config,
+                "timestamp": datetime.now().isoformat(),
+            },
+        )
+
+        # Initialize active discussion with format info
+        self.add_entry(
+            content=f"Meeting Format: {format_config.get('format', 'standard')}",
+            source="system",
+            layer="active_discussion",
+            metadata={
+                "type": "format_info",
+                "importance": 0.8,
+                "config": format_config,
+            },
+        )
+
+        # Add any topics to key points
+        if topics := format_config.get("topics", []):
+            self.add_entry(
+                content=f"Meeting Topics: {', '.join(topics)}",
+                source="system",
+                layer="key_points",
+                metadata={
+                    "type": "topics",
+                    "importance": 0.9,
+                    "topics": topics,
+                },
+            )
+
+    def add_entry(
+        self, content: str, source: str, layer: str, metadata: Optional[Dict] = None
+    ) -> None:
+        """Add a new entry to a context layer.
+
+        Args:
+            content: The content of the entry.
+            source: The source of the entry (e.g., board member role).
+            layer: The target layer for the entry.
+            metadata: Optional metadata for the entry.
+
+        Raises:
+            ValueError: If the specified layer doesn't exist.
+        """
+        if layer not in self.layers:
+            raise ValueError(f"Invalid layer: {layer}")
+
+        entry = ContextEntry(
+            content=content,
+            source=source,
+            timestamp=datetime.now(),
+            importance=metadata.get("importance", 0.5) if metadata else 0.5,
+            metadata=metadata or {},
+        )
+
+        # Add entry to layer
+        self.layers[layer].add_entry(entry)
+
+        # Process the new entry
+        self.memory_manager.process_new_entry(entry, layer)
+
+    def promote_entry(self, entry: ContextEntry, target_layer: str) -> None:
+        """Promote an entry to a higher context layer.
+
+        Args:
+            entry: The entry to promote.
+            target_layer: The target layer for promotion.
+
+        Raises:
+            ValueError: If promotion criteria are not met.
+        """
+        self.memory_manager.process_promotion(entry, target_layer)
+
+    def update_framework(self, content: str, metadata: Optional[Dict] = None) -> None:
+        """Update the meeting framework.
+
+        Args:
+            content: The framework update content.
+            metadata: Optional metadata for the framework entry.
+        """
+        entry = ContextEntry(
+            content=content,
+            source="system",
+            timestamp=datetime.now(),
+            importance=1.0,  # Framework entries are always important
+            metadata=metadata or {},
+        )
+        self.layers["meeting_framework"].add_entry(entry)
+        self.memory_manager.process_framework_update(entry)
+
+    def add_knowledge(self, content: str, metadata: Optional[Dict] = None) -> None:
+        """Add an entry to persistent knowledge.
+
+        Args:
+            content: The knowledge content to add.
+            metadata: Optional metadata for the knowledge entry.
+        """
+        entry = ContextEntry(
+            content=content,
+            source="system",
+            timestamp=datetime.now(),
+            importance=0.8,  # Knowledge entries start with high importance
+            metadata=metadata or {"verified": True},  # Knowledge entries are verified
+        )
+        self.layers["persistent_knowledge"].add_entry(entry)
+        self.memory_manager.process_knowledge_addition(entry)
+
+    def search_context(
+        self,
+        query: str,
+        target_layers: Optional[List[str]] = None,
+        min_relevance: float = 0.3,
+    ) -> List[ContextEntry]:
+        """Search for relevant context entries.
+
+        Args:
+            query: The search query.
+            target_layers: Optional list of layers to search in.
+            min_relevance: Minimum relevance score for results.
+
+        Returns:
+            List of relevant context entries.
+        """
+        results = self.retrieval_system.search(
+            query, self.layers, target_layers=target_layers
+        )
+        return [
+            r for r in results if r.metadata.get("search_relevance", 0) >= min_relevance
+        ]
+
+    def search_by_topic(
+        self, topic: str, target_layers: Optional[List[str]] = None
+    ) -> List[ContextEntry]:
+        """Search for entries related to a specific topic.
+
+        Args:
+            topic: The topic to search for.
+            target_layers: Optional list of layers to search in.
+
+        Returns:
+            List of topic-related entries.
+        """
+        return self.retrieval_system.search_by_topic(
+            topic, self.layers, target_layers=target_layers
+        )
+
+    def get_layer_summary(
+        self,
+        layer_name: str,
+        time_window: Optional[timedelta] = None,
+        min_importance: float = 0.0,
+    ) -> str:
+        """Get a summary for a specific layer.
+
+        Args:
+            layer_name: The name of the layer to summarize.
+            time_window: Optional time window to limit entries.
+            min_importance: Minimum importance score for included entries.
+
+        Returns:
+            A formatted summary string.
+
+        Raises:
+            ValueError: If the specified layer doesn't exist.
+        """
+        if layer_name not in self.layers:
+            raise ValueError(f"Invalid layer: {layer_name}")
+
+        return self.summarization_engine.create_layer_summary(
+            self.layers[layer_name],
+            time_window=time_window,
+            min_importance=min_importance,
+        )
+
+    def get_multi_layer_summary(
+        self,
+        target_layers: Optional[List[str]] = None,
+        time_window: Optional[timedelta] = None,
+    ) -> str:
+        """Get a summary spanning multiple layers.
+
+        Args:
+            target_layers: Optional list of layers to summarize.
+            time_window: Optional time window to limit entries.
+
+        Returns:
+            A formatted multi-layer summary string.
+        """
+        return self.summarization_engine.create_multi_layer_summary(
+            self.layers, target_layers=target_layers, time_window=time_window
+        )
+
+    def get_topic_summary(
+        self, topic: str, target_layers: Optional[List[str]] = None
+    ) -> str:
+        """Get a summary focused on a specific topic.
+
+        Args:
+            topic: The topic to summarize.
+            target_layers: Optional list of layers to include.
+
+        Returns:
+            A topic-focused summary string.
+        """
+        return self.summarization_engine.create_topic_summary(
+            topic, self.layers, target_layers=target_layers
+        )
+
+    async def get_context(
+        self, topic: str, additional_context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Get context for a given topic, combining relevant entries with additional context.
+
+        Args:
+            topic: The topic to get context for.
+            additional_context: Additional context to include.
+
+        Returns:
+            Dict containing combined context information.
+        """
+        # Search for relevant entries across all layers
+        relevant_entries = self.search_by_topic(topic)
+
+        # Get topic-specific summary
+        topic_summary = self.get_topic_summary(topic)
+
+        # Combine context from different sources
+        context = {
+            "topic": topic,
+            "topic_summary": topic_summary,
+            "relevant_entries": [entry.to_dict() for entry in relevant_entries],
+            "framework": self.get_layer_summary("meeting_framework"),
+            "key_points": self.get_layer_summary("key_points"),
+            "additional_context": additional_context,
+        }
+
+        return context
+
+    def get_layer_statistics(self, layer_name: str) -> Dict[str, Any]:
+        """Get statistics for a specific layer.
+
+        Args:
+            layer_name: The name of the layer.
+
+        Returns:
+            Dictionary containing layer statistics.
+
+        Raises:
+            ValueError: If the specified layer doesn't exist.
+        """
+        if layer_name not in self.layers:
+            raise ValueError(f"Invalid layer: {layer_name}")
+
+        return self.layers[layer_name].get_statistics()
+
+    def clear_old_entries(self, layer_name: str, max_age_hours: float) -> None:
+        """Clear old entries from a layer.
+
+        Args:
+            layer_name: The name of the layer.
+            max_age_hours: Maximum age of entries in hours.
+
+        Raises:
+            ValueError: If the specified layer doesn't exist.
+        """
+        if layer_name not in self.layers:
+            raise ValueError(f"Invalid layer: {layer_name}")
+
+        self.layers[layer_name].clear_old_entries(max_age_hours)
