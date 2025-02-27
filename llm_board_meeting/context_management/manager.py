@@ -351,3 +351,87 @@ class ContextManager:
             raise ValueError(f"Invalid layer: {layer_name}")
 
         self.layers[layer_name].clear_old_entries(max_age_hours)
+
+    async def add_contribution(self, topic: str, contribution: Dict[str, Any]) -> None:
+        """Add a member's contribution to the context.
+
+        Args:
+            topic: The topic being discussed.
+            contribution: The contribution data from a board member.
+        """
+        # Add to active discussion layer
+        self.add_entry(
+            content=contribution.get("content", ""),
+            source=contribution.get("source", "unknown"),
+            layer="active_discussion",
+            metadata={
+                "topic": topic,
+                "type": contribution.get("type", "discussion"),
+                "importance": contribution.get("importance", 0.5),
+                "timestamp": datetime.now().isoformat(),
+                "contribution_metadata": contribution.get("metadata", {}),
+            },
+        )
+
+        # Check if contribution should be promoted to key points
+        if contribution.get("importance", 0.5) >= 0.7 or contribution.get(
+            "is_key_point", False
+        ):
+            self.add_entry(
+                content=contribution.get("content", ""),
+                source=contribution.get("source", "unknown"),
+                layer="key_points",
+                metadata={
+                    "topic": topic,
+                    "type": contribution.get("type", "key_point"),
+                    "importance": max(0.7, contribution.get("importance", 0.7)),
+                    "timestamp": datetime.now().isoformat(),
+                    "contribution_metadata": contribution.get("metadata", {}),
+                },
+            )
+
+    async def generate_summary(
+        self, discussion_history: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Generate a comprehensive meeting summary from the discussion history.
+
+        Args:
+            discussion_history: List of discussion entries with their metadata.
+
+        Returns:
+            Dict containing the meeting summary with various components.
+        """
+        # Get summaries from each layer
+        active_summary = self.get_layer_summary("active_discussion")
+        key_points_summary = self.get_layer_summary("key_points")
+        framework_summary = self.get_layer_summary("meeting_framework")
+        knowledge_summary = self.get_layer_summary("persistent_knowledge")
+
+        # Extract topics from discussion history
+        topics = list(
+            set(
+                entry.get("topic", "")
+                for entry in discussion_history
+                if entry.get("topic")
+            )
+        )
+
+        # Get topic-specific summaries
+        topic_summaries = {topic: self.get_topic_summary(topic) for topic in topics}
+
+        # Create multi-layer summary for overall context
+        overall_summary = self.get_multi_layer_summary()
+
+        return {
+            "overall_summary": overall_summary,
+            "layer_summaries": {
+                "active_discussion": active_summary,
+                "key_points": key_points_summary,
+                "meeting_framework": framework_summary,
+                "persistent_knowledge": knowledge_summary,
+            },
+            "topic_summaries": topic_summaries,
+            "total_contributions": len(discussion_history),
+            "topics_covered": topics,
+            "timestamp": datetime.now().isoformat(),
+        }

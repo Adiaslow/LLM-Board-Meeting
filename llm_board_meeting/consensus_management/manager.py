@@ -159,3 +159,67 @@ class ConsensusManager:
             "active_entries": len(self.active_entries),
             "archived_entries": len(self.archived_entries),
         }
+
+    async def process_contributions(
+        self,
+        topic: str,
+        contributions: List[Dict[str, Any]],
+        context: Dict[str, Any],
+        board_members: Sequence[BoardMember],
+    ) -> Dict[str, Any]:
+        """Process multiple contributions to build consensus.
+
+        Args:
+            topic: The topic being discussed.
+            contributions: List of contribution dictionaries from board members.
+            context: Additional context for consensus building.
+            board_members: Sequence of board members participating in consensus.
+
+        Returns:
+            Dict containing consensus results.
+        """
+        # Create a new consensus entry for the contributions
+        entry = ConsensusEntry(
+            topic=topic,
+            content={"contributions": contributions},
+            source_role="system",
+            metadata={
+                "context": context,
+                "contribution_count": len(contributions),
+                "timestamp": datetime.now().isoformat(),
+            },
+        )
+
+        # Process the entry using the appropriate strategy
+        result = await self.process_entry(entry, board_members)
+
+        # Add contribution-specific metrics
+        result["contribution_metrics"] = {
+            "total_contributions": len(contributions),
+            "contributing_roles": list(
+                set(c.get("role") for c in contributions if "role" in c)
+            ),
+            "contribution_types": list(
+                set(c.get("type") for c in contributions if "type" in c)
+            ),
+        }
+
+        return result
+
+    def get_metrics(self) -> Dict[str, Any]:
+        """Get consensus management metrics.
+
+        Returns:
+            Dict containing metrics about consensus processes.
+        """
+        return {
+            **self.metrics,
+            "success_rate": (
+                self.metrics["successful_consensus"] / self.metrics["total_entries"]
+                if self.metrics["total_entries"] > 0
+                else 0.0
+            ),
+            "active_processes": len(self.active_entries),
+            "archived_processes": len(self.archived_entries),
+            "last_updated": datetime.now().isoformat(),
+        }

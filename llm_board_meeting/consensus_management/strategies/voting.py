@@ -52,10 +52,17 @@ class VotingBasedStrategy(ConsensusStrategy):
         """
         votes = {}
         for member in board_members:
-            vote = await member.evaluate_proposal(
+            criteria_scores = await member.evaluate_proposal(
                 entry.content, entry.metadata.get("criteria", {})
             )
-            votes[member.role] = vote * self.config.voting_weights.get(member.role, 1.0)
+            # Calculate average score across all criteria
+            if criteria_scores:
+                avg_score = sum(criteria_scores.values()) / len(criteria_scores)
+                votes[member.role] = avg_score * self.config.voting_weights.get(
+                    member.role, 1.0
+                )
+            else:
+                votes[member.role] = 0.0
         return votes
 
     def _calculate_weighted_score(self, votes: Dict[str, float]) -> float:

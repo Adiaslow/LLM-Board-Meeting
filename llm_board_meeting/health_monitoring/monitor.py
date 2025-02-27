@@ -8,8 +8,9 @@ including token usage, participation patterns, and performance indicators.
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
+from llm_board_meeting.core.board_member import BoardMember
 from llm_board_meeting.health_monitoring.models import (
     MemberHealth,
     TokenUsage,
@@ -226,3 +227,48 @@ class HealthMonitor:
                 issues.append("high_failure_rate")
 
         return issues
+
+    async def update_member_metrics(
+        self, member: "BoardMember", contribution: Dict[str, Any]
+    ) -> None:
+        """Update health metrics for a member based on their contribution.
+
+        Args:
+            member: The board member whose metrics to update.
+            contribution: The contribution data from the member.
+        """
+        if member.name not in self.member_health:
+            return
+
+        member_health = self.member_health[member.name]
+
+        # Update token usage if available
+        if "token_usage" in contribution:
+            usage = contribution["token_usage"]
+            member_health.token_usage.add_usage(
+                usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)
+            )
+
+        # Update participation metrics
+        member_health.participation.record_contribution(
+            contribution_type=contribution.get("type", "discussion"),
+            response_time=contribution.get("response_time", 0.0),
+        )
+
+        # Update performance metrics
+        member_health.performance.record_interaction(
+            success=contribution.get("success", True),
+            confidence=contribution.get("confidence", 0.8),
+            error_type=contribution.get("error_type"),
+        )
+
+    async def get_meeting_metrics(self) -> Dict[str, Any]:
+        """Get aggregated metrics for the current meeting.
+
+        Returns:
+            Dict containing meeting-wide health metrics.
+        """
+        return {
+            member_id: member.get_health_summary()
+            for member_id, member in self.member_health.items()
+        }

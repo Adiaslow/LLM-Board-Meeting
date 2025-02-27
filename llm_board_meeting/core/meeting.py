@@ -14,6 +14,7 @@ import asyncio
 
 from ..context_management.manager import ContextManager
 from ..consensus_management.manager import ConsensusManager
+from ..consensus_management.models import ConsensusConfig
 from ..health_monitoring.monitor import HealthMonitor
 from .board_member import BoardMember
 
@@ -65,7 +66,9 @@ class Meeting:
 
         # Initialize managers
         self.context_manager = ContextManager(context_config or {})
-        self.consensus_manager = ConsensusManager(consensus_config or {})
+        self.consensus_manager = ConsensusManager(
+            ConsensusConfig(**(consensus_config or {}))
+        )
         self.health_monitor = HealthMonitor()
 
         # Initialize state
@@ -130,7 +133,7 @@ class Meeting:
         if self.format_config.get("requires_consensus", False):
             self.state = MeetingState.CONSENSUS_BUILDING
             consensus_result = await self.consensus_manager.process_contributions(
-                topic, contributions, discussion_context
+                topic, contributions, discussion_context, self.members
             )
             self.decisions.append(
                 {

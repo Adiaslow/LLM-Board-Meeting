@@ -7,6 +7,7 @@ This module provides integration with Ollama for running local LLM models.
 import json
 from typing import Dict, Any, Optional
 import aiohttp
+from aiohttp import ClientTimeout
 
 from .base import BaseLLMAdapter
 
@@ -29,7 +30,7 @@ class OllamaAdapter(BaseLLMAdapter):
         """
         self.model_name = model_name
         self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
+        self.timeout = ClientTimeout(total=timeout)
 
     async def generate_response(
         self,
@@ -109,14 +110,33 @@ class OllamaAdapter(BaseLLMAdapter):
         """
         async with aiohttp.ClientSession() as session:
             try:
+                # Use generate endpoint with raw mode to get token count
+                payload = {
+                    "model": self.model_name,
+                    "prompt": text,
+                    "raw": True,
+                    "options": {
+                        "num_predict": 1
+                    },  # Minimal prediction to just get token count
+                }
+
                 async with session.post(
-                    f"{self.base_url}/api/tokenize",
-                    json={"model": self.model_name, "content": text},
+                    f"{self.base_url}/api/generate",
+                    json=payload,
                     timeout=self.timeout,
                 ) as response:
                     response.raise_for_status()
-                    result = await response.json()
-                    return len(result.get("tokens", []))
+                    response_text = await response.text()
+                    # Take the first JSON object which contains prompt evaluation info
+                    json_responses = [
+                        json.loads(line)
+                        for line in response_text.strip().split("\n")
+                        if line.strip()
+                    ]
+                    first_response = json_responses[0] if json_responses else {}
+
+                    # Return the prompt evaluation count as token count
+                    return first_response.get("prompt_eval_count", 0)
 
             except Exception as e:
                 raise RuntimeError(f"Error counting tokens: {str(e)}")
